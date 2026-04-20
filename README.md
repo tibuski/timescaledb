@@ -22,6 +22,49 @@
 - Password: admin
 - Pre-configured server: TimescaleDB → timescaledb:5432
 
+## InfluxDB2 Migration (Reference)
+
+These commands were used to migrate from InfluxDB2 to the LP file format:
+
+```bash
+# Remove old volume (if exists)
+docker volume rm influx_v2_data
+
+# Create temporary InfluxDB2 container
+docker run -d --user 1000:1000 --name influx_converter \
+  -p 8086:8086 \
+  -v $(pwd):/backup \
+  -v influx_v2_data:/var/lib/influxdb2 \
+  -e DOCKER_INFLUXDB_INIT_MODE=setup \
+  -e DOCKER_INFLUXDB_INIT_USERNAME=admin \
+  -e DOCKER_INFLUXDB_INIT_PASSWORD=adminpassword \
+  -e DOCKER_INFLUXDB_INIT_ORG=Tech-ABNF \
+  -e DOCKER_INFLUXDB_INIT_BUCKET=temp_bucket \
+  -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=MON_SUPER_TOKEN_SECRET_123 \
+  influxdb:2.7
+
+sleep 15
+
+# Restore backup to InfluxDB2
+docker exec influx_converter influx restore \
+  --token MON_SUPER_TOKEN_SECRET_123 \
+  --org Tech-ABNF \
+  --bucket DataLake_ST \
+  /backup
+
+# Find Bucket ID
+docker exec influx_converter influx bucket list --token MON_SUPER_TOKEN_SECRET_123
+
+# Export to Line Protocol format
+docker exec influx_converter influxd inspect export-lp \
+  --bucket-id <BUCKET_ID> \
+  --engine-path /var/lib/influxdb2/engine \
+  --output-path /backup/migration_datalake.lp
+
+# Count lines in exported file
+wc -l migration_datalake.lp
+```
+
 ## Start/Stop
 
 ```bash
