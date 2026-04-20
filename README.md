@@ -106,7 +106,7 @@ measurements (
     time         BIGINT NOT NULL,    -- nanoseconds timestamp
     measurement TEXT,               -- CLIMATE, OCCUPANCY, ENERGY, etc.
     device_uid   TEXT,              -- device identifier
-    site        TEXT,               -- site name
+    sitetech    TEXT,               -- site name (from LP Site=)
     source      TEXT,              -- LORA, etc.
     category    TEXT,              -- BUILD, etc.
     measure_name TEXT,            -- co2, temperature, occupancy, etc.
@@ -121,7 +121,7 @@ measurements (
 docker exec timescaledb psql -U postgres -d datalake -c "
 DROP TABLE IF EXISTS measurements;
 CREATE TABLE measurements (
-    time BIGINT NOT NULL, measurement TEXT, device_uid TEXT, site TEXT,
+    time BIGINT NOT NULL, measurement TEXT, device_uid TEXT, sitetech TEXT,
     source TEXT, category TEXT, measure_name TEXT, measure_id TEXT, value DOUBLE PRECISION
 );
 SELECT create_hypertable('measurements', 'time', chunk_time_interval => 86400000000000);
@@ -243,13 +243,13 @@ These queries are converted from InfluxDB v2 - adjust column names as needed bas
 - Use fixed date ranges (not `now()`) for queries
 - Convert timestamp: `to_timestamp(time / 1000000000)`
 - Time buckets use: `time_bucket('interval', to_timestamp(time / 1000000000))`
-- Column mapping (from LP file):
-  - `SiteTech` → `site`
-  - `MeasureName` → `measure_name`
-  - `_field` → `measure_name`
-  - `_value` → `value`
-  - `Source` → `source`
+- Column mapping (from LP file → TimescaleDB):
+  - `Site` OR `SiteTech` → `sitetech` (LP file has both formats)
+  - `Category` OR `CategoryTech` → `category` (LP file has both formats)
   - `DeviceUID` → `device_uid`
+  - `Source` → `source`
+  - `MeasureName` → `measure_name`
+  - `_value` → `value`
 
 ---
 
@@ -555,9 +555,9 @@ def parse_line(line):
         int(timestamp),
         measurement,
         tags.get('DeviceUID', ''),
-        tags.get('Site', ''),
+        tags.get('Site') or tags.get('SiteTech') or '',
         tags.get('Source', ''),
-        tags.get('Category', ''),
+        tags.get('Category') or tags.get('CategoryTech') or '',
         tags.get('MeasureName', field_name),
         tags.get('MeasureID', ''),
         value
@@ -631,7 +631,7 @@ def insert_batch(cur, conn, batch, table='measurements'):
     
     try:
         cur.copy_expert(
-            f"COPY {table} (time, measurement, device_uid, site, source, category, measure_name, measure_id, value) FROM STDIN",
+            f"COPY {table} (time, measurement, device_uid, sitetech, source, category, measure_name, measure_id, value) FROM STDIN",
             buffer
         )
         conn.commit()
