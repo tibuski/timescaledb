@@ -239,14 +239,17 @@ These queries are converted from InfluxDB v2 - adjust column names as needed bas
 
 ### Notes
 - `time` is stored as **nanoseconds** (bigint)
-- Convert to timestamp: `to_timestamp(time / 1000000000)`
+- Data ranges from **2021-12-23 to 2025-04-13**
+- Use fixed date ranges (not `now()`) for queries
+- Convert timestamp: `to_timestamp(time / 1000000000)`
 - Time buckets use: `time_bucket('interval', to_timestamp(time / 1000000000))`
-- Column mapping (verify in your data):
-  - `SiteTech` → likely `site`
-  - `LocalisationTech` → may be in tags or use `device_uid`
+- Column mapping (from LP file):
+  - `SiteTech` → `site`
+  - `MeasureName` → `measure_name`
   - `_field` → `measure_name`
   - `_value` → `value`
   - `Source` → `source`
+  - `DeviceUID` → `device_uid`
 
 ---
 
@@ -264,32 +267,36 @@ from bucket(xxx)
 
 **TimescaleDB SQL:**
 ```sql
--- Daily occupancy counts for a site
+-- Note: Data issues in source file:
+-- - Most records have empty 'site' (only ~75k of 374M have site filled)
+-- - BRTR occupancy data is from Dec 2021 - Jan 2022 ONLY
+-- - Site filtering only works on ~0.02% of data
+
+-- Query that works (filtering on non-empty site):
 SELECT 
     time_bucket('1 day', to_timestamp(time / 1000000000)) AS day,
     site,
     measure_name,
     COUNT(*) AS count
 FROM measurements
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 30 * 86400000000000)  -- last 30 days
+WHERE site != ''
   AND measure_name = 'occupancy'
-  AND site = 'BRTR'
 GROUP BY day, site, measure_name
-ORDER BY day DESC;
+ORDER BY day DESC
+LIMIT 10;
 
--- Hourly occupancy counts
+-- Alternative: filter by device_uid prefix
 SELECT 
-    time_bucket('1 hour', to_timestamp(time / 1000000000)) AS hour,
-    site,
+    time_bucket('1 day', to_timestamp(time / 1000000000)) AS day,
+    device_uid,
     measure_name,
-    COUNT(*) AS count,
-    SUM(value) AS total_value  -- if 0/1, sum = occupancy minutes
+    COUNT(*) AS count
 FROM measurements
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 1 * 86400000000000)  -- last 1 day
+WHERE device_uid LIKE 'BRTR.%'
   AND measure_name = 'occupancy'
-  AND site = 'BRTR'
-GROUP BY hour, site, measure_name
-ORDER BY hour DESC;
+GROUP BY day, device_uid, measure_name
+ORDER BY day DESC
+LIMIT 10;
 ```
 
 ---
@@ -353,22 +360,21 @@ ORDER BY count DESC;
 
 **TimescaleDB SQL:**
 ```sql
--- Climate data for specific locations (adjust column based on your data)
--- Note: You may need to filter by device_uid or check which column contains LocalisationTech
+-- Note: Data is historical (2021-2024), so use date ranges instead of "now()"
+
+-- Climate data for specific locations
 SELECT 
     time_bucket('5 minutes', to_timestamp(time / 1000000000)) AS time,
     device_uid,
     measure_name,
     AVG(value) AS value
 FROM measurements
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 7 * 86400000000000)  -- last 7 days
+WHERE time >= 1704067200000000000  -- 2024-01-01
+  AND time < 1704153600000000000    -- 2024-01-02
   AND measurement = 'CLIMATE'
   AND device_uid LIKE 'BRTR.R2.%'
 GROUP BY time, device_uid, measure_name
 ORDER BY time DESC, device_uid;
-
--- If you have a specific location column, use IN:
--- SELECT ... WHERE location IN ('BRTR.R2.+65.PEP.BUILD.ROOM.OPS', 'BRTR.R2.+65.BLV.BUILD.ROOM.OPS', ...)
 
 -- Multiple measures (temperature, humidity, co2) for charting
 SELECT 
@@ -376,7 +382,8 @@ SELECT
     measure_name,
     AVG(value) AS value
 FROM measurements
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 1 * 86400000000000)
+WHERE time >= 1704067200000000   -- 2024-01-01
+  AND time < 1704153600000000    -- 2024-01-02
   AND measurement = 'CLIMATE'
   AND measure_name IN ('temperature', 'humidity', 'co2')
 GROUP BY time, measure_name
@@ -388,15 +395,20 @@ ORDER BY time DESC;
 ### Query 4: Time range examples
 
 ```sql
--- Last 24 hours
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 1 * 86400000000000)
+-- Note: Data is historical (2021-2024), timestamps are NANOSECONDS
 
--- Last 30 days
-WHERE time >= (EXTRACT(EPOCH FROM now()) * 1000000000 - 30 * 86400000000000)
+-- Useful timestamps:
+-- 1640995200000000000 = 2022-01-01 00:00:00 UTC
+-- 1704067200000000000   = 2024-01-01 00:00:00 UTC
+-- 1735689600000000000   = 2025-01-01 00:00:00 UTC
 
--- Specific date range
-WHERE time >= 1704067200000000000  -- 2024-01-01 00:00:00 UTC
-  AND time < 1735689600000000000   -- 2025-01-01 00:00:00 UTC
+-- Example: 2024 data only
+WHERE time >= 1704067200000000000   -- 2024-01-01
+  AND time < 1735689600000000000    -- 2025-01-01
+
+-- Nanoseconds to timestamp conversion
+SELECT to_timestamp(time / 1000000000) FROM measurements LIMIT 1;
+-- Result: 2021-12-23 13:25:39+00
 ```
 
 ## Configuration Files
