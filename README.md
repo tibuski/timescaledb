@@ -2,9 +2,9 @@
 
 ## Status
 - Services running
-- **374,876,230 rows imported**
-- Database size: **36 GB**
-- Chunks: **1,546**
+- **374,876,230 rows imported** (all columns properly filled)
+- Database size: **56 GB**
+- Chunks: **~1,500+**
 - pgAdmin pre-configured with TimescaleDB server
 
 ## Services
