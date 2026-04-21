@@ -240,9 +240,16 @@ These queries are converted from InfluxDB v2 - adjust column names as needed bas
 ### Notes
 - `time` is stored as **nanoseconds** (bigint)
 - Data ranges from **2021-12-23 to 2025-04-13**
-- Use fixed date ranges (not `now()`) for queries
+- Use `now() - INTERVAL` for relative dates (recommended)
+- Or use nanosecond timestamps: `1704067200000000000 = 2024-01-01`
 - Convert timestamp: `to_timestamp(time / 1000000000)`
 - Time buckets use: `time_bucket('interval', to_timestamp(time / 1000000000))`
+
+**Date helper:**
+```sql
+-- Now() to nanoseconds: (now() - INTERVAL '30 days')::bigint * 1000000000
+```
+
 - Column mapping (from LP file → TimescaleDB):
   - `Site` OR `SiteTech` → `sitetech` (LP file has both formats)
   - `Category` OR `CategoryTech` → `category` (LP file has both formats)
@@ -267,23 +274,18 @@ from bucket(xxx)
 
 **TimescaleDB SQL:**
 ```sql
--- Note: Data issues in source file:
--- - Most records have empty 'site' (only ~75k of 374M have site filled)
--- - BRTR occupancy data is from Dec 2021 - Jan 2022 ONLY
--- - Site filtering only works on ~0.02% of data
-
--- Query that works (filtering on non-empty site):
+-- Simple: last 30 days
 SELECT 
     time_bucket('1 day', to_timestamp(time / 1000000000)) AS day,
-    site,
+    sitetech,
     measure_name,
     COUNT(*) AS count
 FROM measurements
-WHERE site != ''
+WHERE sitetech = 'BRTR'
   AND measure_name = 'occupancy'
-GROUP BY day, site, measure_name
-ORDER BY day DESC
-LIMIT 10;
+  AND time >= (now() - INTERVAL '30 days')::bigint * 1000000000
+GROUP BY day, sitetech, measure_name
+ORDER BY day DESC;
 
 -- Alternative: filter by device_uid prefix
 SELECT 
@@ -377,13 +379,13 @@ GROUP BY time, device_uid, measure_name
 ORDER BY time DESC, device_uid;
 
 -- Multiple measures (temperature, humidity, co2) for charting
-SELECT 
+SELECT
     time_bucket('10 minutes', to_timestamp(time / 1000000000)) AS time,
     measure_name,
     AVG(value) AS value
 FROM measurements
-WHERE time >= 1704067200000000   -- 2024-01-01
-  AND time < 1704153600000000    -- 2024-01-02
+WHERE time >= 1704067200000000000  -- 2024-01-01
+  AND time < 1704153600000000000    -- 2024-01-02
   AND measurement = 'CLIMATE'
   AND measure_name IN ('temperature', 'humidity', 'co2')
 GROUP BY time, measure_name
