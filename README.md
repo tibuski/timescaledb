@@ -103,17 +103,37 @@ docker compose ps
 ### Schema
 ```sql
 measurements (
-    time         BIGINT NOT NULL,    -- nanoseconds timestamp
-    measurement TEXT,               -- CLIMATE, OCCUPANCY, ENERGY, etc.
-    device_uid   TEXT,              -- device identifier
-    sitetech    TEXT,               -- site name (from LP Site=)
-    source      TEXT,              -- LORA, etc.
-    category    TEXT,              -- BUILD, etc.
-    measure_name TEXT,            -- co2, temperature, occupancy, etc.
-    measure_id  TEXT,             -- measurement identifier
-    value       DOUBLE PRECISION  -- numeric value
+    time              BIGINT NOT NULL,    -- nanoseconds timestamp
+    measurement      TEXT,               -- CLIMATE, OCCUPANCY, ENERGY, etc.
+    device_uid        TEXT,              -- device identifier
+    sitetech         TEXT,               -- site name (from LP Site= or SiteTech=)
+    source           TEXT,              -- LORA, etc.
+    category         TEXT,              -- BUILD, etc. (Category= or CategoryTech=)
+    measure_name     TEXT,            -- co2, temperature, occupancy, etc.
+    measure_id      TEXT,             -- measurement identifier
+    value           DOUBLE PRECISION,  -- numeric value
+    "group"         TEXT,              -- SENSOR, DIST, etc. (Group= or GroupTech=)
+    measure_uid     TEXT,            -- full measurement identifier
+    localisation_tech TEXT,        -- technical location path
+    localisation_user TEXT,        -- user-friendly location name
+    measure_channel TEXT           -- measurement channel (ENERGY data)
 )
 ```
+
+### LP Tag Mapping
+| LP Tag | TimescaleDB Column |
+|-------|-----------------|
+| DeviceUID | device_uid |
+| Site / SiteTech | sitetech |
+| Source | source |
+| Category / CategoryTech | category |
+| MeasureName | measure_name |
+| MeasureID | measure_id |
+| Group / GroupTech | "group" |
+| MeasureUID | measure_uid |
+| LocalisationTech | localisation_tech |
+| LocalisationUser | localisation_user |
+| MeasureChannel | measure_channel |
 
 ### Reimport (if needed)
 ```bash
