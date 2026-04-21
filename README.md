@@ -142,7 +142,8 @@ docker exec timescaledb psql -U postgres -d datalake -c "
 DROP TABLE IF EXISTS measurements;
 CREATE TABLE measurements (
     time BIGINT NOT NULL, measurement TEXT, device_uid TEXT, sitetech TEXT,
-    source TEXT, category TEXT, measure_name TEXT, measure_id TEXT, value DOUBLE PRECISION
+    source TEXT, category TEXT, measure_name TEXT, measure_id TEXT, value DOUBLE PRECISION,
+    \"group\" TEXT, measure_uid TEXT, localisation_tech TEXT, localisation_user TEXT, measure_channel TEXT
 );
 SELECT create_hypertable('measurements', 'time', chunk_time_interval => 86400000000000);
 "
@@ -161,7 +162,7 @@ The import script (`/import_lp.py`) parses InfluxDB Line Protocol files:
 - **Location**: Already mounted in container at `/import_lp.py`
 - **Input**: LP file path (default: `/backup/migration_datalake.lp`)
 - **Batch size**: 50,000 rows
-- **Skip lines**: Can resume from specific line (SKIP_LINES parameter)
+- **Progress**: Prints status every 10 minutes
 - **Skips invalid values**: String values like `"LVL_NONE&SEND"` are skipped
 
 #### Usage
@@ -182,7 +183,7 @@ docker exec -d timescaledb python3 /import_lp.py /backup/migration_datalake.lp
 3. Skip lines with string values (invalid)
 4. Batch insert via PostgreSQL COPY
 5. Commit after each batch (ensures durability)
-6. Print progress every 50,000 rows
+6. Print progress every 10 minutes
 
 ## Monitoring
 
@@ -264,21 +265,6 @@ These queries are converted from InfluxDB v2 - adjust column names as needed bas
 - Or use nanosecond timestamps: `1704067200000000000 = 2024-01-01`
 - Convert timestamp: `to_timestamp(time / 1000000000)`
 - Time buckets use: `time_bucket('interval', to_timestamp(time / 1000000000))`
-
-**Date helper:**
-```sql
--- Now() to nanoseconds: (now() - INTERVAL '30 days')::bigint * 1000000000
-```
-
-- Column mapping (from LP file → TimescaleDB):
-  - `Site` OR `SiteTech` → `sitetech` (LP file has both formats)
-  - `Category` OR `CategoryTech` → `category` (LP file has both formats)
-  - `DeviceUID` → `device_uid`
-  - `Source` → `source`
-  - `MeasureName` → `measure_name`
-  - `_value` → `value`
-
----
 
 ### Query 1: Occupancy counts for TRONE (0/1 sensors)
 
